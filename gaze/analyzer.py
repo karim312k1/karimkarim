@@ -20,9 +20,10 @@ from typing import Any, Literal, Protocol
 import cv2
 import numpy as np
 
-EventType = Literal["gaze_down", "gaze_side", "no_face", "multiple_faces", "too_close_to_camera"]
+EventType = Literal["gaze_down", "gaze_up", "gaze_side", "no_face", "multiple_faces", "too_close_to_camera"]
 EVENT_TYPES: tuple[EventType, ...] = (
     "gaze_down",
+    "gaze_up",
     "gaze_side",
     "no_face",
     "multiple_faces",
@@ -44,7 +45,7 @@ DEFAULT_GAZE_GAP_SECONDS = 0.6
 # student's own. Extra faces narrower than this share of the largest face are
 # ignored instead of being reported as a second person.
 DEFAULT_MIN_EXTRA_FACE_RATIO = 0.4
-GAZE_EVENT_TYPES: frozenset[str] = frozenset({"gaze_down", "gaze_side"})
+GAZE_EVENT_TYPES: frozenset[str] = frozenset({"gaze_down", "gaze_up", "gaze_side"})
 # A phone lying on the keyboard can be read in glances shorter than the
 # continuous threshold. Looking down for this many seconds in total within the
 # window is reported as gaze_down too, however short each glance was.
@@ -57,7 +58,7 @@ DEFAULT_DOWN_WINDOW_SECONDS = 60.0
 DEFAULT_AUTO_BASELINE_SECONDS = 3.0
 # Five seconds let a student read a phone on the keyboard and look back up in
 # time. The application reports a continuous look down sooner.
-DEFAULT_GAZE_DOWN_SECONDS = 4.0
+DEFAULT_GAZE_DOWN_SECONDS = 3.0
 # Face Mesh's face oval excludes iris and interior points. Its horizontal
 # extremes give the visible face width, including when the head is tilted.
 FACE_CONTOUR_IDS = (
@@ -151,7 +152,8 @@ class AnalyzerConfig:
     """Starting thresholds; tune on the actual camera after calibration."""
 
     gaze_side_seconds: float = 3.0
-    gaze_down_seconds: float = 5.0
+    gaze_down_seconds: float = 3.0
+    gaze_up_seconds: float = 3.0
     no_face_seconds: float = 2.0
     multiple_faces_seconds: float = 1.0
     face_too_close_ratio: float = FACE_TOO_CLOSE_RATIO
@@ -159,6 +161,8 @@ class AnalyzerConfig:
     max_sample_gap_seconds: float = 1.0
     iris_missing_grace_seconds: float = 0.3
     head_side_degrees: float = 25.0
+    head_up_degrees: float = 20.0
+    iris_up_threshold: float = 0.20
     head_down_degrees: float = 35.0
     combined_down_degrees: float = 25.0
     calibrated_head_down_degrees: float = 20.0
@@ -742,9 +746,18 @@ class GazeAnalyzer:
                 )
                 or (opening is not None and opening <= cfg.eyes_only_down_open_ratio)
             )
+        head_up = pitch is not None and pitch <= -cfg.head_up_degrees
+        up = head_up or (
+            (self._screen is not None or self._auto_screen is not None)
+            and iris_y is not None and iris_y <= -cfg.iris_up_threshold and not down
+        )
+        if head_up:
+            down = False
         if self._in_keyboard_zone(metrics):
-            down, side = False, False
-        return tuple(name for name, active in (("gaze_down", down), ("gaze_side", side)) if active)
+            down, side, up = False, False, False
+        return tuple(name for name, active in (
+            ("gaze_down", down), ("gaze_up", up), ("gaze_side", side)
+        ) if active)
 
     def _reference(self) -> FaceMetrics:
         return self._screen or self._auto_screen or FaceMetrics(HeadPose(0, 0, 0), 0.5, 0.5)
@@ -892,7 +905,7 @@ class GazeAnalyzer:
                         # existing episodes briefly, but require a fresh iris
                         # observation before emitting an event based on the iris.
                         deferred = (
-                            set(self.last_result.signals) & {"gaze_down", "gaze_side"}
+                            set(self.last_result.signals) & GAZE_EVENT_TYPES
                         ) - set(signals)
                         signals = tuple(n for n in EVENT_TYPES if n in signals or n in deferred)
                 else:
@@ -901,6 +914,7 @@ class GazeAnalyzer:
                 signals = (*signals, "too_close_to_camera")
         thresholds = {
             "gaze_down": self.config.gaze_down_seconds,
+            "gaze_up": self.config.gaze_up_seconds,
             "gaze_side": self.config.gaze_side_seconds,
             "no_face": self.config.no_face_seconds,
             "multiple_faces": self.config.multiple_faces_seconds,

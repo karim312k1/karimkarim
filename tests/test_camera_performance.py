@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication
 
 from config import AppConfig
 from events import ProctorEvent
+from core.preparation import PreparationStatus
 from ui.main_window import CameraWorker
 
 
@@ -60,6 +61,8 @@ class CameraPerformanceTests(unittest.TestCase):
         self.pipeline = Mock()
         config = replace(AppConfig.from_env(), analysis_fps=100, preview_fps=100)
         self.worker = CameraWorker(config, self.detectors, self.pipeline)
+        # These tests exercise evidence handling after successful preparation.
+        self.worker._prepared = True
         self.thread = threading.Thread(target=self.worker.run)
         self.addCleanup(self.cleanup)
         self.patcher = patch("cv2.VideoCapture", return_value=self.capture)
@@ -121,6 +124,15 @@ class CameraPerformanceTests(unittest.TestCase):
         self.thread.start()
         self.assertTrue(self.entered.wait(2))
         self.assertTrue(self.capture.advanced.wait(0.6))
+
+    def test_preparation_is_not_limited_by_low_exam_fps(self):
+        self.worker.config = replace(self.worker.config, analysis_fps=.5)
+        self.worker._prepared = False
+        self.detectors.prepare.return_value = PreparationStatus(False, 0, 'waiting')
+        self.thread.start()
+        self.assertTrue(self.entered.wait(2))
+        self.resume.set()
+        self.assertTrue(self.second.wait(.8), 'preparation was limited to the exam FPS')
 
     def test_stop_waits_for_active_analysis_and_releases_camera_on_owner_thread(self):
         finished = threading.Event()

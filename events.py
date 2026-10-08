@@ -18,6 +18,7 @@ class EventType(str, Enum):
     PHONE_DETECTED = "phone_detected"
     PHONE_AIMED_AT_SCREEN = "phone_aimed_at_screen"
     GAZE_DOWN = "gaze_down"
+    GAZE_UP = "gaze_up"
     GAZE_SIDE = "gaze_side"
     NO_FACE = "no_face"
     MULTIPLE_FACES = "multiple_faces"

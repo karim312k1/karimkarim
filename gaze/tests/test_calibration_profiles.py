@@ -58,9 +58,9 @@ class CalibrationProfileTests(unittest.TestCase):
             for timestamp in np.arange(0, 10.01, 0.5):
                 self.assertEqual(restored.analyze(self.frame, timestamp=float(timestamp)), [])
             self.measure.return_value = FaceMetrics(HeadPose(28, 0, 0))
-            for timestamp in np.arange(10.5, 15.01, 0.5):
+            for timestamp in np.arange(10.5, 13.01, 0.5):
                 self.assertEqual(restored.analyze(self.frame, timestamp=float(timestamp)), [])
-            events = restored.analyze(self.frame, timestamp=15.5)
+            events = restored.analyze(self.frame, timestamp=13.5)
             self.assertEqual([event["type"] for event in events], ["gaze_down"])
             self.assertAlmostEqual(events[0]["started_at"], 10.5)
 

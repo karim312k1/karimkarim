@@ -101,9 +101,10 @@ class SharedContractTests(unittest.TestCase):
             emitted.extend(current)
         return emitted
 
-    def test_all_five_events_use_the_host_class_enum_and_timing_details(self) -> None:
+    def test_all_six_events_use_the_host_class_enum_and_timing_details(self) -> None:
         cases = (
-            ("gaze_down", 1, 0.3, metrics(pitch=40), 5.0),
+            ("gaze_down", 1, 0.3, metrics(pitch=40), 3.0),
+            ("gaze_up", 1, 0.3, metrics(pitch=-30), 3.0),
             ("gaze_side", 1, 0.3, metrics(yaw=30), 3.0),
             ("no_face", 0, 0.3, metrics(), 2.0),
             ("multiple_faces", 2, 0.3, metrics(), 1.0),

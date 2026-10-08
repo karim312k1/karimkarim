@@ -12,6 +12,7 @@ from PySide6.QtGui import QImage
 from config import AppConfig
 from core.detectors import DetectorCollection
 from core.pipeline import EventPipeline
+from core.preparation import PreparationStatus
 
 
 class CameraWorker(QObject):
@@ -21,6 +22,7 @@ class CameraWorker(QObject):
     camera_status = Signal(bool, str)
     analysis_error = Signal(str)
     performance_ready = Signal(float, float, float, float)
+    preparation_status = Signal(object)
     finished = Signal()
 
     def __init__(self, config: AppConfig, detectors: DetectorCollection,
@@ -33,6 +35,8 @@ class CameraWorker(QObject):
         self._frames = threading.Condition()
         self._latest_frame: Any = None
         self._frame_number = 0
+        self._captured_at = 0.0
+        self._prepared = False
         self._preview: QImage | None = None
         self._preview_notified = False
         self._capture: Any = None
@@ -121,6 +125,7 @@ class CameraWorker(QObject):
             with self._frames:
                 # Replacing this reference never mutates a frame being analyzed.
                 self._latest_frame = frame
+                self._captured_at = time.monotonic()
                 self._frame_number += 1
                 self._frames.notify_all()
             captured_frames += 1
@@ -154,8 +159,15 @@ class CameraWorker(QObject):
         try:
             if self._stop_event.is_set():
                 return
-            for status in self.detectors.load():
+            statuses = self.detectors.load()
+            for status in statuses:
                 self.module_status.emit(status)
+            failed = [s for s in statuses if not s.loaded]
+            if failed:
+                self.preparation_status.emit(PreparationStatus(
+                    False, 0, 'Не удалось загрузить модули: ' + '; '.join(s.message for s in failed), True))
+                self.stop()
+                return
             interval = 1.0 / self.config.analysis_fps
             next_analysis = 0.0
             last_frame = 0
@@ -166,13 +178,42 @@ class CameraWorker(QObject):
                         delay = next_analysis - time.monotonic()
                         if self._frame_number != last_frame and delay <= 0:
                             frame = self._latest_frame
+                            captured_at = self._captured_at
                             last_frame = self._frame_number
                             break
                         self._frames.wait(timeout=delay if delay > 0 else None)
                     else:
                         break
-                next_analysis = time.monotonic() + interval
+                # Calibration needs enough consecutive samples even when the
+                # exam itself is configured to analyze only 0.5–1 FPS.
+                active_interval = interval if self._prepared else 1.0 / max(6.0, self.config.analysis_fps)
+                next_analysis = time.monotonic() + active_interval
                 events, errors = self.detectors.analyze(frame)
+                if not self._prepared:
+                    if self._stop_event.is_set():
+                        break
+                    if errors:
+                        self.detectors.preparation.reset()
+                        self.preparation_status.emit(PreparationStatus(False, 0, errors[0], True))
+                        self.analysis_error.emit(errors[0])
+                        self.stop()
+                        break
+                    # A frame captured before a slow model warmup cannot prove
+                    # that the student's current face is ready.
+                    if time.monotonic() - captured_at > 1.0:
+                        self.detectors.preparation.reset()
+                        self.preparation_status.emit(PreparationStatus(False, 0, 'Модели готовы, ожидаем свежий кадр…'))
+                        continue
+                    status = self.detectors.prepare(time.monotonic())
+                    self.preparation_status.emit(status)
+                    if status.error:
+                        self.stop()
+                        break
+                    if status.ready:
+                        self._prepared = True
+                        self.pipeline.offer_reference_frame(frame)
+                    # Calibration movements are not exam violations.
+                    continue
                 # Always submit the exact frame used by both detectors, even
                 # when capture has advanced or shutdown began during inference.
                 for event in events:

@@ -18,6 +18,7 @@ RISK_WEIGHTS: dict[str, float] = {
     "no_face": 20.0,
     "gaze_side": 10.0,
     "gaze_down": 10.0,
+    "gaze_up": 10.0,
     "too_close_to_camera": 10.0,
     "window_switched": 15.0,
     "hotkey_blocked": 15.0,
@@ -33,6 +34,7 @@ RISK_WEIGHTS: dict[str, float] = {
 RISK_TYPE_CAPS: dict[str, float] = {
     "gaze_side": 30.0,
     "gaze_down": 30.0,
+    "gaze_up": 30.0,
     "no_face": 40.0,
     "too_close_to_camera": 20.0,
     "window_switched": 30.0,

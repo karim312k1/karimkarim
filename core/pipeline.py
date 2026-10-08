@@ -22,6 +22,7 @@ DEFAULT_COOLDOWNS: dict[EventType, float] = {
     EventType.PHONE_DETECTED: 0.0,
     EventType.PHONE_AIMED_AT_SCREEN: 0.0,
     EventType.GAZE_DOWN: 0.0,
+    EventType.GAZE_UP: 0.0,
     EventType.GAZE_SIDE: 0.0,
     EventType.NO_FACE: 0.0,
     EventType.MULTIPLE_FACES: 0.0,

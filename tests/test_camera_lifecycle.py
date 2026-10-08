@@ -18,6 +18,7 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import QApplication
 
 from config import AppConfig
+from core.preparation import PreparationStatus
 from events import ProctorEvent
 from ui.main_window import CameraWorker, MainWindow, QUESTIONS
 
@@ -29,6 +30,7 @@ class GatedWorker(QObject):
     analysis_error = Signal(str)
     performance_ready = Signal(float, float, float, float)
     finished = Signal()
+    preparation_status = Signal(object)
 
     def __init__(self, config, detectors, pipeline):
         super().__init__()
@@ -37,6 +39,7 @@ class GatedWorker(QObject):
         self.release = threading.Event()
 
     def run(self):
+        self.preparation_status.emit(PreparationStatus(True, 1, 'ready'))
         self.entered.set()
         self.release.wait(5)
         self.pipeline.submit(ProctorEvent.create("phone_detected", source="test"))
@@ -69,6 +72,7 @@ class CameraLifecycleTests(unittest.TestCase):
         window = MainWindow(self.config)
         self.app.processEvents()
         self.assertTrue(window.camera_worker.entered.wait(2))
+        self.app.processEvents()
         self.addCleanup(self.clean_window, window)
         return window
 

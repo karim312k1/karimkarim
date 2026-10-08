@@ -465,6 +465,12 @@ def detect(frame: np.ndarray) -> list[ProctorEvent]:
     return _default_detector.detect(frame)
 
 
+def reset_default_timers() -> None:
+    """Discard preparation observations while retaining the loaded models."""
+    if _default_detector is not None:
+        _default_detector.reset()
+
+
 def reset_default_detector() -> None:
     """Закрывает модель функции detect перед новой сессией."""
     global _default_detector

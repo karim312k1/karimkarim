@@ -64,7 +64,7 @@ class Base(unittest.TestCase):
         self.clock = Clock()
         self.frame = np.zeros((48, 64, 3), dtype=np.uint8)
         self.analyzer = GazeAnalyzer(
-            AnalyzerConfig(smoothing_window=1),
+            AnalyzerConfig(smoothing_window=1, gaze_down_seconds=5),
             face_mesh=self.mesh,
             clock=self.clock,
             gaze_gap_seconds=self.gap,

@@ -71,6 +71,11 @@ class DemoDiagnosticsTests(unittest.TestCase):
         self.assertIn("too_close_to_camera: 2.5/4.0s", text)
         self.assertNotIn("gaze_down: ", text)
 
+    def test_up_timer_and_calibration_filter(self):
+        result = AnalysisResult(1, None, ('gaze_up',), [], {'gaze_up': 1.5})
+        self.assertIn('gaze_up: 1.5/3.0s', '\n'.join(self.lines(result=result)))
+        self.assertEqual(select_events([{'type': 'gaze_up'}], calibrating=True), [])
+
     def test_counts_are_cumulative_for_all_five_events_and_do_not_mutate_input(self):
         original = {"gaze_side": 2}
         counts = update_event_counts(
@@ -79,7 +84,7 @@ class DemoDiagnosticsTests(unittest.TestCase):
         self.assertEqual(original, {"gaze_side": 2})
         self.assertEqual(counts["gaze_side"], 4)
         self.assertEqual(counts["no_face"], 1)
-        self.assertEqual(len(counts), 5)
+        self.assertEqual(len(counts), 6)
         text = "\n".join(self.lines(event_counts=counts))
         for name, count in counts.items():
             self.assertIn(f"{name}={count}", text)

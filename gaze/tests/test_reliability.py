@@ -38,7 +38,7 @@ class GazeReliabilityTests(unittest.TestCase):
 
     def make_analyzer(self, smoothing_window=1):
         analyzer = GazeAnalyzer(
-            AnalyzerConfig(smoothing_window=smoothing_window), face_mesh=OneFaceDetector()
+            AnalyzerConfig(smoothing_window=smoothing_window, gaze_down_seconds=5), face_mesh=OneFaceDetector()
         )
         self.addCleanup(analyzer.close)
         return analyzer

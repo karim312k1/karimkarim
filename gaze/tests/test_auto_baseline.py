@@ -69,9 +69,9 @@ class AutoBaselineTests(AutoBase):
         self.assertAlmostEqual(screen["head_pose"]["pitch"], 4.9)
         self.assertAlmostEqual(screen["eye_open"], 0.30)
 
-    def test_look_at_the_keyboard_is_reported_after_five_seconds(self):
+    def test_look_at_the_keyboard_is_reported_after_three_seconds(self):
         self.hold(4.0, AT_SCREEN)
-        self.assertEqual(self.hold(4.8, AT_KEYBOARD), [])
+        self.assertEqual(self.hold(2.8, AT_KEYBOARD), [])
         self.assertEqual(self.hold(1.0, AT_KEYBOARD), ["gaze_down"])
 
     def test_reading_the_bottom_of_the_screen_is_not_reported(self):

@@ -9,6 +9,7 @@ from types import ModuleType
 from typing import Any, Callable
 
 from events import ProctorEvent, normalize_events
+from .preparation import FacePreparation, PreparationStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +91,7 @@ class DetectorCollection:
             ),
         )
         self.last_timings_ms: dict[str, float] = {}
+        self.preparation = FacePreparation()
 
     def load(self) -> list[ModuleStatus]:
         return [adapter.load() for adapter in self.adapters]
@@ -106,6 +108,24 @@ class DetectorCollection:
             except Exception as exc:
                 errors.append(f"{adapter.name}: {type(exc).__name__}: {exc}")
         return events, errors
+
+    def prepare(self, now: float) -> PreparationStatus:
+        module = self.adapters[1]._module
+        getter = getattr(module, 'get_diagnostics', None)
+        calibrate = getattr(module, 'calibrate_default_analyzer', None)
+        if not callable(getter) or not callable(calibrate):
+            return PreparationStatus(False, 0, 'Модуль взгляда не поддерживает настройку лица', True)
+        status = self.preparation.update(getter() or {}, now)
+        if status.ready:
+            samples = [module.FaceMetrics(
+                module.HeadPose(**raw['head_pose']), raw['iris_x'], raw['iris_y'],
+                eye_open=raw['eye_open']
+            ) for _, raw in self.preparation.samples]
+            calibrate(samples, target='screen')
+            reset_phone = getattr(self.adapters[0]._module, 'reset_default_timers', None)
+            if callable(reset_phone):
+                reset_phone()
+        return status
 
     def close(self) -> None:
         for adapter in self.adapters:

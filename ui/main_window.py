@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QRadioButton,
     QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -49,6 +50,8 @@ from ui.theme import (
     window_title,
 )
 from ui.camera_worker import CameraWorker
+from core.preparation import PreparationStatus
+from ui.preparation_panel import PreparationPanel
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,6 +275,8 @@ class MainWindow(QMainWindow):
         self.student_name = student_name
         self.answers: dict[int, int] = {}
         self.question_index = 0
+        self._monitoring_ready = False
+        self._preparation_failed = False
         self._shutdown_done = False
         self._shutdown_started = False
         self._close_requested = False
@@ -280,6 +285,9 @@ class MainWindow(QMainWindow):
         self._shutdown_timer = QTimer(self)
         self._shutdown_timer.setInterval(25)
         self._shutdown_timer.timeout.connect(self._continue_shutdown)
+        self._preparation_timer = QTimer(self)
+        self._preparation_timer.setSingleShot(True)
+        self._preparation_timer.timeout.connect(self._preparation_timeout)
 
         self.bridge = UiBridge()
         self.bridge.pipeline_error.connect(self._show_runtime_error)
@@ -311,9 +319,15 @@ class MainWindow(QMainWindow):
         root = QHBoxLayout(central)
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(18)
-        root.addWidget(self._build_test_panel(), 4 if self._student_view else 3)
+        self.test_panel = self._build_test_panel()
+        self.test_panel.setEnabled(False)
+        root.addWidget(self.test_panel, 4 if self._student_view else 3)
         root.addWidget(self._build_monitor_panel(), 1 if self._student_view else 2)
-        self.setCentralWidget(central)
+        self.content_stack = QStackedWidget()
+        self.preparation_panel = PreparationPanel(self.close)
+        self.content_stack.addWidget(self.preparation_panel)
+        self.content_stack.addWidget(central)
+        self.setCentralWidget(self.content_stack)
         if os.getenv("PROCTOR_WATERMARK", "1").strip() != "0":
             # Imported here so the window still opens if the overlay is unavailable.
             from ui.watermark import WatermarkOverlay
@@ -448,7 +462,8 @@ class MainWindow(QMainWindow):
             if self.answers.get(self.question_index) == index:
                 button.setChecked(True)
 
-        self.previous_button.setEnabled(self.question_index > 0)
+        self.previous_button.setEnabled(self._monitoring_ready and self.question_index > 0)
+        self.next_button.setEnabled(self._monitoring_ready)
         is_last = self.question_index == len(QUESTIONS) - 1
         self.next_button.setText("Завершить тест" if is_last else "Далее")
 
@@ -458,12 +473,16 @@ class MainWindow(QMainWindow):
             self.answers[self.question_index] = checked
 
     def _previous_question(self) -> None:
+        if not self._monitoring_ready:
+            return
         self._save_answer()
         if self.question_index > 0:
             self.question_index -= 1
             self._render_question()
 
     def _next_question(self) -> None:
+        if not self._monitoring_ready:
+            return
         if self.answer_group.checkedId() < 0:
             QMessageBox.information(self, "Выберите ответ", "Сначала выберите вариант ответа.")
             return
@@ -531,9 +550,6 @@ class MainWindow(QMainWindow):
     def start_monitoring(self) -> None:
         if self._shutdown_started:
             return
-        enabled, message = self.security.enable(hwnd=int(self.winId()))
-        self._set_status(self.security_status_label, "Защита", enabled, message)
-
         self.camera_thread = QThread(self)
         self.camera_worker = CameraWorker(self.config, self.detectors, self.pipeline)
         self.camera_worker.moveToThread(self.camera_thread)
@@ -543,8 +559,36 @@ class MainWindow(QMainWindow):
         self.camera_worker.module_status.connect(self._on_module_status)
         self.camera_worker.analysis_error.connect(self._show_runtime_error)
         self.camera_worker.performance_ready.connect(self._on_performance)
+        self.camera_worker.preparation_status.connect(self._on_preparation_status)
         self.camera_worker.finished.connect(self.camera_thread.quit)
         self.camera_thread.start()
+        self._preparation_timer.start(120000)
+
+    def _on_preparation_status(self, status: PreparationStatus) -> None:
+        if self._shutdown_started or self._monitoring_ready or self._preparation_failed:
+            return
+        self.preparation_panel.update_status(status)
+        if status.error:
+            self._preparation_failed = True
+            self._preparation_timer.stop()
+            if self.camera_worker is not None:
+                self.camera_worker.stop()
+        elif status.ready:
+            enabled, message = self.security.enable(hwnd=int(self.winId()))
+            self._set_status(self.security_status_label, "Защита", enabled, message)
+            if not enabled:
+                self._on_preparation_status(PreparationStatus(
+                    False, 0, 'Не удалось включить защиту: ' + message, True))
+                return
+            self._preparation_timer.stop()
+            self._monitoring_ready = True
+            self.test_panel.setEnabled(True)
+            self._render_question()
+            self.content_stack.setCurrentIndex(1)
+
+    def _preparation_timeout(self) -> None:
+        self._on_preparation_status(PreparationStatus(False, 0,
+            'Не удалось подготовить наблюдение за 2 минуты. Проверьте камеру и освещение.', True))
 
     def _submit_security_event(self, event: ProctorEvent) -> None:
         frame = self.camera_worker.snapshot() if self.camera_worker is not None else None
@@ -552,7 +596,15 @@ class MainWindow(QMainWindow):
 
     def _show_frame(self) -> None:
         image = self.camera_worker.take_preview() if self.camera_worker is not None else None
-        if image is None or self._shutdown_started or self._student_view:
+        if image is None or self._shutdown_started:
+            return
+        if not self._monitoring_ready:
+            preview = self.preparation_panel.preview
+            preview.setPixmap(QPixmap.fromImage(image).scaled(
+                preview.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+            return
+        if self._student_view:
             return
         pixmap = QPixmap.fromImage(image)
         self.camera_label.setPixmap(
@@ -581,6 +633,8 @@ class MainWindow(QMainWindow):
         self._set_status(self.camera_status_label, "Камера", ok, message)
         if not ok and "остановлена" not in message:
             self.camera_label.setText(message)
+            if not self._monitoring_ready:
+                self._on_preparation_status(PreparationStatus(False, 0, message, True))
 
     def _on_module_status(self, status: ModuleStatus) -> None:
         label = self.phone_status_label if status.name == "phone" else self.gaze_status_label
@@ -604,6 +658,8 @@ class MainWindow(QMainWindow):
 
     def _show_runtime_error(self, message: str) -> None:
         self.statusBar().showMessage(message, 7000)
+        if not self._monitoring_ready:
+            self._on_preparation_status(PreparationStatus(False, 0, message, True))
 
     def shutdown(self) -> bool:
         """Request shutdown and poll completion without blocking the Qt thread."""
@@ -611,6 +667,7 @@ class MainWindow(QMainWindow):
             return True
         if not self._shutdown_started:
             self._shutdown_started = True
+            self._preparation_timer.stop()
             self.next_button.setEnabled(False)
             self.previous_button.setEnabled(False)
             if self.camera_worker is not None:

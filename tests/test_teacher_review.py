@@ -90,7 +90,9 @@ class TeacherReviewDialogTests(unittest.TestCase):
                     self.assertTrue(window.pipeline.stop())
                     self.app.processEvents()
                     self.assertFalse(window.findChildren(QListWidget))
-                    self.assertFalse(window.findChildren(QProgressBar))
+                    # Preparation has a progress bar; the student has no risk gauge.
+                    self.assertEqual(window.findChildren(QProgressBar),
+                                     [window.preparation_panel.progress])
                     text = "\n".join(label.text() for label in window.findChildren(QLabel))
                     self.assertNotIn("Уровень риска", text)
                     self.assertNotIn("AnyDesk.exe", text)

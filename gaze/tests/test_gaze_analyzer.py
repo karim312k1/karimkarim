@@ -60,7 +60,9 @@ class AnalyzerBehaviorTests(unittest.TestCase):
         self.mesh = FakeFaceMesh()
         self.clock = ManualClock()
         self.frame = np.zeros((48, 64, 3), dtype=np.uint8)
-        self.config = AnalyzerConfig(smoothing_window=1)
+        # Preserve the five-second configuration exercised by the legacy cases.
+        # Application defaults are covered separately by the three-second tests.
+        self.config = AnalyzerConfig(smoothing_window=1, gaze_down_seconds=5)
         self.analyzer = GazeAnalyzer(self.config, face_mesh=self.mesh, clock=self.clock)
         self.metric_patch = patch("gaze.analyzer.measure_face", return_value=metrics())
         self.measure = self.metric_patch.start()
@@ -82,7 +84,8 @@ class AnalyzerBehaviorTests(unittest.TestCase):
     def test_default_durations_and_config_are_immutable(self):
         config = AnalyzerConfig()
         self.assertEqual(config.gaze_side_seconds, 3)
-        self.assertEqual(config.gaze_down_seconds, 5)
+        self.assertEqual(config.gaze_down_seconds, 3)
+        self.assertEqual(config.gaze_up_seconds, 3)
         self.assertEqual(config.no_face_seconds, 2)
         self.assertEqual(config.multiple_faces_seconds, 1)
         with self.assertRaises(FrozenInstanceError):

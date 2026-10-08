@@ -272,7 +272,7 @@ def format_diagnostics_lines(
             f"OR eyes<={config.eyes_only_down_open_ratio:.0%}"
         )
     if calibrating:
-        lines.append("COLLECTING PROFILE: gaze_down/gaze_side events are hidden")
+        lines.append("COLLECTING PROFILE: gaze_down/gaze_up/gaze_side events are hidden")
     return lines
 
 
@@ -280,7 +280,7 @@ def select_events(events: list[dict], *, calibrating: bool) -> list[dict]:
     """Do not report gaze changes intentionally made while learning a profile."""
     if not calibrating:
         return list(events)
-    return [event for event in events if event["type"] not in ("gaze_down", "gaze_side")]
+    return [event for event in events if event["type"] not in ("gaze_down", "gaze_up", "gaze_side")]
 
 
 def update_event_counts(counts: dict[str, int], events: list[dict]) -> dict[str, int]:
@@ -341,6 +341,7 @@ def format_overlay_lines(
             lines.append(f"Iris: x={metrics.iris_x:.2f} y={metrics.iris_y:.2f}")
     limits = {
         "gaze_down": config.gaze_down_seconds,
+        "gaze_up": config.gaze_up_seconds,
         "gaze_side": config.gaze_side_seconds,
         "no_face": config.no_face_seconds,
         "multiple_faces": config.multiple_faces_seconds,

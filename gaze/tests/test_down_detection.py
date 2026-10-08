@@ -51,7 +51,9 @@ class DownDetectionTests(unittest.TestCase):
     def setUp(self):
         self.frame = np.zeros((480, 640, 3), dtype=np.uint8)
         self.detector = LandmarkDetector(eye_landmarks())
-        self.analyzer = GazeAnalyzer(AnalyzerConfig(smoothing_window=1), face_mesh=self.detector)
+        # Geometry/profile regressions below deliberately use the configurable
+        # five-second threshold; application defaults are tested separately.
+        self.analyzer = GazeAnalyzer(AnalyzerConfig(smoothing_window=1, gaze_down_seconds=5), face_mesh=self.detector)
         self.addCleanup(self.analyzer.close)
         self.pose_patch = patch.object(module, "estimate_head_pose", return_value=None)
         self.pose = self.pose_patch.start()
